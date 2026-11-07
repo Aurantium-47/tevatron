@@ -20,6 +20,17 @@ from tevatron.retriever.gc_trainer import GradCacheTrainer as GCTrainer
 logger = logging.getLogger(__name__)
 
 
+def _get_model_dtype(model_args, training_args):
+    if training_args.bf16:
+        return torch.bfloat16
+    elif training_args.fp16 and (model_args.lora or model_args.lora_name_or_path):
+        return torch.float16
+    else:
+        # Native FP16 AMP needs FP32 trainable weights for gradient unscaling.
+        # LoRA keeps its frozen backbone in FP16 and trainable adapters in FP32.
+        return torch.float32
+
+
 def main():
     parser = HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
 
@@ -77,12 +88,7 @@ def main():
     else:
         tokenizer.padding_side = 'left'
     
-    if training_args.bf16:
-        torch_dtype = torch.bfloat16
-    elif training_args.fp16:
-        torch_dtype = torch.float16
-    else:
-        torch_dtype = torch.float32
+    torch_dtype = _get_model_dtype(model_args, training_args)
 
     model_load_kwargs = {
         'cache_dir': model_args.cache_dir,
